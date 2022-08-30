@@ -8,9 +8,9 @@ module Tomcats (
 	Parameters(..),
 	emptyPreprocessor, rollout,
 	-- * State
-	State(..),
 	Tree(..),
-	initialize, descend, unsafeDescend,
+	initialize, unsafeInitialize,
+	descend, unsafeDescend,
 	-- * Statistics
 	VanillaStatistics(..), vanillaLeaf, meanValuation,
 	-- * Utilities
@@ -24,7 +24,7 @@ import Data.Traversable
 import System.Random.Stateful (StatefulGen(uniformWord64R))
 import qualified Data.HashMap.Strict as HM
 
--- | A representation of the current tree in a run of a Monte Carlo tree
+-- | A representation of the current state in a run of a Monte Carlo tree
 -- search.
 --
 -- This gets kinda big, so you might want to avoid the 'Eq' and 'Ord'
@@ -35,14 +35,6 @@ data Tree stats move = Tree
 	, unexplored :: HashMap move stats
 	, cachedEvaluation :: Maybe stats -- ^ Used only at leaf nodes, and not really for public consumption
 	} deriving (Eq, Ord, Read, Show)
-
--- TODO: WTF is this type doing for us
--- | A representation of the current state of a run of a Monte Carlo Tree
--- search.
-data State stats move position = State
-	{ root :: position
-	, tree :: Tree stats move
-	} deriving Show
 
 data Parameters m score stats move position where
 	Parameters :: (Monad m, Ord score, Semigroup stats, Hashable move) =>
@@ -80,62 +72,52 @@ data Parameters m score stats move position where
 		-- as usual, in both cases).
 		} -> Parameters m score stats move position
 
+-- | Create a suitable initial tree for passing to 'mcts'.
 initialize ::
 	Parameters m score stats move position ->
-	position ->
-	m (State stats move position)
-initialize params@Parameters{} pos = do
-	pos' <- clone params pos
-	st <- unsafeInitialize params pos'
-	pure st { root = pos }
+	position -> m (Tree stats move)
+initialize params@Parameters{} = clone params >=> unsafeInitialize params
 
 -- | Just like initialize, except that it might mutate the position it's given.
 unsafeInitialize ::
 	Parameters m score stats move position ->
-	position ->
-	m (State stats move position)
+	position -> m (Tree stats move)
 unsafeInitialize params@Parameters{} pos = do
 	(stats, moves) <- expand params pos
-	pure State
-		{ root = pos
-		, tree = Tree
-			{ statistics = stats
-			, children = HM.empty
-			, unexplored = moves
-			, cachedEvaluation = if HM.null moves then Just stats else Nothing
-			}
+	pure Tree
+		{ statistics = stats
+		, children = HM.empty
+		, unexplored = moves
+		, cachedEvaluation = if HM.null moves then Just stats else Nothing
 		}
 
 -- | Choose a move using the currently available information, and mutate the
--- current state accordingly. The move that maximizes the given summary
--- function will be selected. This returns 'Nothing' when the state is at a
+-- current position accordingly. The move that maximizes the given summary
+-- function will be selected. This returns 'Nothing' when the position is at a
 -- leaf node.
 descend :: Ord a =>
 	Parameters m score stats move position ->
 	(stats -> a) ->
-	State stats move position ->
-	m (Maybe (move, State stats move position))
-descend params@Parameters{} summarize state = for
+	position -> Tree stats move ->
+	m (Maybe (move, Tree stats move))
+descend params@Parameters{} summarize pos t = for
 	(maximumOn (const summarize) ((statistics <$> children t) `HM.union` unexplored t))
-	(\(move, _, _) -> (,) move <$> unsafeDescend params move state)
-	where t = tree state
+	(\(move, _, _) -> (,) move <$> unsafeDescend params move pos t)
 
--- | Mutate the state, descending down a particular branch of the tree (and
--- discarding all the other branches). Callers must guarantee that the given
--- move is legal in the current position.
+-- | Mutate the current position, descending down a particular branch of the
+-- tree (and discarding all the other branches). Callers must guarantee that
+-- the given move is legal in the current position. Returns the subtree rooted
+-- at that branch.
 unsafeDescend ::
 	Parameters m score stats move position ->
 	move ->
-	State stats move position ->
-	m (State stats move position)
-unsafeDescend params@Parameters{} move State{ root = pos, tree = t } = do
+	position -> Tree stats move ->
+	m (Tree stats move)
+unsafeDescend params@Parameters{} move pos t = do
 	play params pos move
 	case HM.lookup move (children t) of
 		Nothing -> initialize params pos
-		Just t' -> pure State
-			{ root = pos
-			, tree = t'
-			}
+		Just t' -> pure t'
 
 -- | Do no 'preprocess'ing at all.
 emptyPreprocessor ::
@@ -174,12 +156,11 @@ rollout select params@Parameters{} = params { expand = go } where
 -- budget.
 mcts ::
 	Parameters m score stats move position ->
-	State stats move position ->
-	m (State stats move position)
-mcts params@Parameters{} state = do
-	pos <- clone params (root state)
-	(_, t) <- mcts_ params pos (tree state)
-	pure (state { tree = t })
+	position -> Tree stats move ->
+	m (Tree stats move)
+mcts params@Parameters{} pos t = do
+	pos' <- clone params pos
+	snd <$> mcts_ params pos' t
 
 maximumOn :: Ord a => (k -> v -> a) -> HashMap k v -> Maybe (k, v, a)
 -- checking for emptiness once at the beginning is cheaper than re-checking on
@@ -216,7 +197,7 @@ mcts_ params@Parameters{} pos = go where
 
 	explore dstats t m mstats = do
 		play params pos m
-		State _ child <- unsafeInitialize params pos
+		child <- unsafeInitialize params pos
 		let bothStats = dstats <> statistics child
 		pure (bothStats, t
 			{ statistics = statistics t <> bothStats

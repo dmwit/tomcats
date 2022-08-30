@@ -64,26 +64,26 @@ main :: IO ()
 main = do
 	board <- newArray ((0,0), (2,2)) E
 	params <- ticTacToeParameters
-	let loop nMax 0 state = display state >> descend params visitCount state >>= \case
+	let loop nMax 0 t = display board t >> descend params visitCount board t >>= \case
 	    	Nothing -> pure ()
-	    	Just (move, state') -> print move >> putStrLn "press ENTER to continue" >> getLine >> loop nMax nMax state'
-	    loop nMax n state = mcts params state >>= loop nMax (n-1)
+	    	Just (move, t') -> print move >> putStrLn "press ENTER to continue" >> getLine >> loop nMax nMax t'
+	    loop nMax n t = mcts params board t >>= loop nMax (n-1)
 	initialize params board >>= loop 1000 1000
 
-display :: State VanillaStatistics Move Board -> IO ()
-display state = do
+display :: Board -> Tree VanillaStatistics Move -> IO ()
+display board t = do
 	putStr "\ESC[2J\ESC[H"
 	for_ [0..2] $ \y -> do
 		for_ [0..2] $ \x -> do
-			cell <- readArray (root state) (x, y)
+			cell <- readArray board (x, y)
 			putStr (show cell ++ " ")
 		putStrLn ""
 	putStrLn ""
-	putStr "locally: " >> displayStats (statistics (tree state))
-	for_ (HM.toList (children (tree state))) $ \(move, t) ->
+	putStr "locally: " >> displayStats (statistics t)
+	for_ (HM.toList (children t)) $ \(move, t) ->
 		putStr (show move ++ ": ") >> displayStats (statistics t)
 	putStr "TODO: "
-	for_ (HM.toList (unexplored (tree state))) $ \(move, _) -> putStr (show move ++ " ")
+	for_ (HM.toList (unexplored t)) $ \(move, _) -> putStr (show move ++ " ")
 	putStrLn ""
 
 displayStats :: VanillaStatistics -> IO ()
