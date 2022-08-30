@@ -72,19 +72,18 @@ main = do
 
 display :: Board -> Tree VanillaStatistics Move -> IO ()
 display board t = do
-	putStr "\ESC[2J\ESC[H"
+	putStr "locally: " >> displayStats (statistics t)
+	for_ (HM.toList (children t)) $ \(move, t) ->
+		putStr (show move ++ ": ") >> displayStats (statistics t)
+	putStr "TODO: "
+	when (HM.null (unexplored t)) (putStr "<nothing left to explore>")
+	for_ (HM.toList (unexplored t)) $ \(move, _) -> putStr (show move ++ " ")
+	putStrLn ""
 	for_ [0..2] $ \y -> do
 		for_ [0..2] $ \x -> do
 			cell <- readArray board (x, y)
 			putStr (show cell ++ " ")
 		putStrLn ""
-	putStrLn ""
-	putStr "locally: " >> displayStats (statistics t)
-	for_ (HM.toList (children t)) $ \(move, t) ->
-		putStr (show move ++ ": ") >> displayStats (statistics t)
-	putStr "TODO: "
-	for_ (HM.toList (unexplored t)) $ \(move, _) -> putStr (show move ++ " ")
-	putStrLn ""
 
 displayStats :: VanillaStatistics -> IO ()
 displayStats s = putStrLn $ "visit count " ++ show (visitCount s) ++ ", average valuation " ++ show (meanValuation s)
