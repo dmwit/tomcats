@@ -31,7 +31,6 @@ executable tomcats-demo
     build-depends:      base ^>=4.14.1.0
                       , array ^>=0.5
                       , hashable ^>=1.4
-                      , mwc-random ^>=0.15
                       , tomcats ^>=0.1
                       , unordered-containers ^>=0.2
     hs-source-dirs:   bin

@@ -11,8 +11,6 @@ module Tomcats (
 	Tree(..),
 	initialize, unsafeInitialize,
 	descend, unsafeDescend,
-	-- * Statistics
-	VanillaStatistics(..), vanillaLeaf, meanValuation,
 	-- * Utilities
 	ucb1, uniform,
 	) where
@@ -33,7 +31,9 @@ data Tree stats move = Tree
 	{ statistics :: stats
 	, children :: HashMap move (Tree stats move)
 	, unexplored :: HashMap move stats
-	, cachedEvaluation :: Maybe stats -- ^ Used only at leaf nodes, and not really for public consumption
+	, cachedEvaluation :: Maybe stats
+	-- ^ Used only at leaf nodes, and not really for public consumption (nor
+	-- public production)
 	} deriving (Eq, Ord, Read, Show)
 
 data Parameters m score stats move position where
