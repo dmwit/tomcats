@@ -20,7 +20,9 @@ maintainer:         me@dmwit.com
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  Tomcats,
+    exposed-modules:  Data.HashMap.Total,
+                      Tomcats,
+                      Tomcats.Vanilla.Multiplayer,
                       Tomcats.Vanilla.TwoPlayer
 
     -- Modules included in this executable, other than Main.

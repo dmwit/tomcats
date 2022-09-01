@@ -70,8 +70,8 @@ toPlayer E = error "WTF, tried to think of empty as a player"
 display :: Board -> T.Tree T.Statistics Move -> IO ()
 display board t = do
 	putStr "locally: " >> displayStats (T.statistics t)
-	for_ (HM.toList (T.children t)) $ \(move, t) ->
-		putStr (show move ++ ": ") >> displayStats (T.statistics t)
+	for_ (HM.toList (T.children t)) $ \(move, child) ->
+		putStr (show move ++ ": ") >> displayStats (T.statistics child)
 	putStr "TODO: "
 	when (HM.null (T.unexplored t)) (putStr "<nothing left to explore>")
 	for_ (HM.toList (T.unexplored t)) $ \(move, _) -> putStr (show move ++ " ")

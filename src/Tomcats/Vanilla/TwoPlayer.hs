@@ -65,14 +65,14 @@ data Statistics = Statistics
 	{ visitCount, cumulativeValuation :: {-# UNPACK #-} !Double
 	} deriving (Eq, Ord, Read, Show)
 
--- | @won p@ is a suitable statistic for a game that's finished and won by
--- @p@.
+-- | @won p@ is a suitable statistic for a game that's finished and won by @p@.
 won :: Player -> Statistics
 won p = Statistics 1 $ case p of
 	O -> 0
 	I -> 1
 
--- | @lost p@ is a suitable statistic for a game that's finished and lost by @p@. This is equivalent to combining 'won' and 'otherPlayer'.
+-- | @lost p@ is a suitable statistic for a game that's finished and lost by
+-- @p@. This is equivalent to combining 'won' and 'otherPlayer'.
 lost :: Player -> Statistics
 lost = won . otherPlayer
 
