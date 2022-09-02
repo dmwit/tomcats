@@ -67,9 +67,9 @@ data Parameters m score stats move position where
 		-- While descending into a game tree during an iteration of 'mcts',
 		-- 'preprocess' will be used on each node to make arbitrary adjustments
 		-- to the tree. Implementers should not modify the position provided.
-		-- Any statistics produced here will be included in the current node
-		-- and backpropagated to its ancestors (using the 'Semigroup' instance,
-		-- as usual, in both cases).
+		-- Any statistics produced here will be combined with the statistics
+		-- from the search through the children, then used to update the
+		-- ancestors.
 		} -> Parameters m score stats move position
 
 -- | Create a suitable initial tree for passing to 'mcts'.
@@ -189,18 +189,20 @@ mcts_ params@Parameters{} pos = go where
 			(Just (m1, t1, _score1), _) -> recurse dstats t m1 t1
 			(_, Just (m2, stats2, _score2)) -> explore dstats t m2 stats2
 			_ -> case cachedEvaluation t of
-				Just eval -> pure (eval, t { statistics = statistics t <> dstats <> eval })
+				Just eval -> pure (eval, t { statistics = statistics t <> eval })
 				Nothing -> do -- should never happen
 					(eval, _) <- expand params pos
-					let bothStats = dstats <> eval
-					pure (bothStats, t { statistics = statistics t <> bothStats, cachedEvaluation = Just eval })
+					pure (dstats <> eval, t
+						{ statistics = statistics t <> eval
+						, cachedEvaluation = Just eval
+						})
 
 	explore dstats t m mstats = do
 		play params pos m
 		child <- unsafeInitialize params pos
-		let bothStats = dstats <> statistics child
-		pure (bothStats, t
-			{ statistics = statistics t <> bothStats
+		let childStats = statistics child
+		pure (dstats <> childStats, t
+			{ statistics = statistics t <> childStats
 			, children = HM.insert m child (children t)
 			, unexplored = HM.delete m (unexplored t)
 			})
@@ -208,9 +210,8 @@ mcts_ params@Parameters{} pos = go where
 	recurse dstats t m child = do
 		play params pos m
 		(stats, child') <- go child
-		let bothStats = dstats <> stats
-		pure (bothStats, t
-			{ statistics = statistics t <> bothStats
+		pure (dstats <> stats, t
+			{ statistics = statistics t <> stats
 			, children = HM.insert m child' (children t)
 			})
 
