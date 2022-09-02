@@ -16,6 +16,7 @@ module Tomcats (
 	) where
 
 import Control.Monad
+import Data.Functor
 import Data.Hashable
 import Data.HashMap.Strict (HashMap)
 import Data.Traversable
@@ -180,40 +181,34 @@ mcts_ ::
 mcts_ params@Parameters{} pos = go where
 	go t_ = do
 		(dstats, t) <- preprocess params pos t_
-		case ( maximumOn (\m t'    -> score params m (statistics t) (statistics t')) (children t)
-		     , maximumOn (\m stats -> score params m (statistics t) stats          ) (unexplored t)
-		     ) of
-			(Just (m1, t1, score1), Just (m2, stats2, score2))
-				| score1 < score2 -> explore dstats t m2 stats2
-				| otherwise -> recurse dstats t m1 t1
-			(Just (m1, t1, _score1), _) -> recurse dstats t m1 t1
-			(_, Just (m2, stats2, _score2)) -> explore dstats t m2 stats2
+		(childStats, t') <- case
+			( maximumOn (\m t'    -> score params m (statistics t) (statistics t')) (children t)
+			, maximumOn (\m stats -> score params m (statistics t) stats          ) (unexplored t)
+			) of
+			(Just (m1, t1, score1), Just (m2, _stats2, score2))
+				| score1 < score2 -> explore t m2
+				| otherwise -> recurse t m1 t1
+			(Just (m1, t1, _score1), _) -> recurse t m1 t1
+			(_, Just (m2, _stats2, _score2)) -> explore t m2
 			_ -> case cachedEvaluation t of
-				Just eval -> pure (eval, t { statistics = statistics t <> eval })
-				Nothing -> do -- should never happen
-					(eval, _) <- expand params pos
-					pure (dstats <> eval, t
-						{ statistics = statistics t <> eval
-						, cachedEvaluation = Just eval
-						})
+				Just eval -> pure (eval, t)
+				-- should never happen, I guess unless the preprocessor screwed up
+				Nothing -> expand params pos <&>
+					\(eval, _) -> (eval, t { cachedEvaluation = Just eval })
+		pure (dstats <> childStats, t' { statistics = statistics t <> childStats })
 
-	explore dstats t m mstats = do
+	explore t m = do
 		play params pos m
 		child <- unsafeInitialize params pos
-		let childStats = statistics child
-		pure (dstats <> childStats, t
-			{ statistics = statistics t <> childStats
-			, children = HM.insert m child (children t)
+		pure (statistics child, t
+			{ children = HM.insert m child (children t)
 			, unexplored = HM.delete m (unexplored t)
 			})
 
-	recurse dstats t m child = do
+	recurse t m child = do
 		play params pos m
 		(stats, child') <- go child
-		pure (dstats <> stats, t
-			{ statistics = statistics t <> stats
-			, children = HM.insert m child' (children t)
-			})
+		pure (stats, t { children = HM.insert m child' (children t) })
 
 -- | Compute the popular upper-confidence bound score.
 --
