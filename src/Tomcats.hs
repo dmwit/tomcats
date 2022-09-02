@@ -229,20 +229,3 @@ uniform :: StatefulGen g m => g -> position -> HashMap move stats -> m move
 uniform g _pos moves = do
 	ix <- uniformWord64R (fromIntegral (HM.size moves) - 1) g
 	pure . fst $ HM.toList moves !! fromIntegral ix
-
-data VanillaStatistics = VanillaStatistics
-	{ visitCount, valuation :: {-# UNPACK #-} !Double
-	} deriving (Eq, Ord, Read, Show)
-
--- | A suitable statistic for a leaf node. The argument should be in the range
--- [0,1].
-vanillaLeaf :: Double -> VanillaStatistics
-vanillaLeaf v = VanillaStatistics 1 v
-
-meanValuation :: VanillaStatistics -> Double
-meanValuation stats = valuation stats / visitCount stats
-
-instance Semigroup VanillaStatistics where
-	a <> b = VanillaStatistics (visitCount a + visitCount b) (valuation a + valuation b)
-
-instance Monoid VanillaStatistics where mempty = VanillaStatistics 0 0
