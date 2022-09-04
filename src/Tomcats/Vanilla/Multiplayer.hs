@@ -1,14 +1,15 @@
 module Tomcats.Vanilla.Multiplayer (
 	-- * Top level
 	parameters, parametersIO,
-	T.mcts, T.initialize, T.descend, T.Tree(..),
+	T.mcts, T.initialize, descend, T.Tree(..),
 	-- * Statistics and moves
 	Moves(..),
 	Statistics(..),
-	won, lost, drawn, it'sComplicated,
+	won, lost, drawn,
 	meanValuation,
 	-- * Other
 	ucb1,
+	wonValuation, lostValuation, drawnValuation,
 	T.Parameters(..),
 	) where
 
@@ -55,30 +56,32 @@ parametersIO :: (Hashable move, Hashable player) =>
 	IO (T.Parameters IO Double (Statistics player) move position)
 parametersIO clone moves player play = parameters clone moves player play <$> createSystemRandom
 
+-- | Choose the move that has the most visits, and mutate the current position
+-- accordingly. This returns 'Nothing' when the position is at a leaf node.
+descend ::
+	T.Parameters m score (Statistics player) move position ->
+	position -> T.Tree (Statistics player) move ->
+	m (Maybe (move, T.Tree (Statistics player) move))
+descend params = T.descend params visitCount
+
 data Statistics player = Statistics
 	{ visitCount :: {-# UNPACK #-} !Double
 	, cumulativeValuations :: TMap player Double
 	} deriving Show
 
--- | @won p@ is a suitable statistic for a game that's finished and won by @p@.
-won :: Hashable player => player -> Statistics player
-won p = Statistics 1 $ TMap.singleton p 1 0
+-- | @won p@ is a suitable valuation for a game that's finished and won by @p@.
+wonValuation :: Hashable player => player -> TMap player Double
+wonValuation p = TMap.singleton p 1 0
 
--- | @lost p@ is a suitable statistic for a game that's finished and won by
+-- | @lost p@ is a suitable valuation for a game that's finished and won by
 -- everybody but @p@.
-lost :: Hashable player => player -> Statistics player
-lost p = Statistics 1 $ TMap.singleton p 0 1
+lostValuation :: Hashable player => player -> TMap player Double
+lostValuation p = TMap.singleton p 0 1
 
--- | @drawn@ is a suitable statistic for a game that's finished, but nobody
+-- | @drawn@ is a suitable valuation for a game that's finished, but nobody
 -- really won or lost.
-drawn :: Hashable player => Statistics player
-drawn = Statistics 1 0.5
-
--- | In more complicated situations, each player can have arbitrary-ish
--- preferences. For each player, @1@ should be the most desirable outcome and
--- @0@ the least desirable.
-it'sComplicated :: TMap player Double -> Statistics player
-it'sComplicated = Statistics 1
+drawnValuation :: Hashable player => TMap player Double
+drawnValuation = 0.5
 
 meanValuation :: Statistics player -> TMap player Double
 meanValuation stats = cumulativeValuations stats <&> (/visitCount stats)
@@ -89,13 +92,32 @@ instance Hashable player => Semigroup (Statistics player) where
 instance Hashable player => Monoid (Statistics player) where mempty = Statistics 0 0
 
 -- | Suitable for use as a 'T.score'; compose with a function of type @move ->
--- player@. This is not needed if you plan to simply use the default behaviors
--- provided by 'parameters' or 'parametersIO'.
+-- player@. This is already called on your behalf if you use the default
+-- behaviors provided by 'parameters' or 'parametersIO'.
 ucb1 :: Hashable player => player -> Statistics player -> Statistics player -> Double
 ucb1 p parent child = T.ucb1 (visitCount parent) (visitCount child) (cumulativeValuations child TMap.! p)
 
-data Moves move player = Finished (Statistics player) | Next (HashSet move) deriving Show
+data Moves move player
+	= Finished (TMap player Double)
+	-- ^ The game is over, and this is the valuation.
+	| Next (HashSet move)
+	-- ^ The game is afoot!
+	deriving Show
+
+-- | @won p@ is a suitable summary of a game that's finished and won by @p@.
+won :: Hashable player => player -> Moves move player
+won = Finished . wonValuation
+
+-- | @lost p@ is a suitable summary of a game that's finished and won by
+-- everybody but @p@.
+lost :: Hashable player => player -> Moves move player
+lost = Finished . lostValuation
+
+-- | A suitable summary of a game that's finished, but where nobody really won
+-- or lost.
+drawn :: Hashable player => Moves move player
+drawn = Finished drawnValuation
 
 fromMoves :: (Hashable move, Hashable player) => Moves move player -> (Statistics player, HashMap move (Statistics player))
-fromMoves (Finished stats) = (stats, mempty)
+fromMoves (Finished valuation) = (Statistics 1 valuation, mempty)
 fromMoves (Next ms) = (mempty, mempty <$ toMap ms)

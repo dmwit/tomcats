@@ -27,9 +27,9 @@ ticTacToeParameters = T.parametersIO
 		(mapArray id) -- how to clone a board
 		-- what next moves are available, or who won if the game is over
 		(\board -> winner board >>= \case
-			Just c -> pure . T.Finished . T.won . toPlayer $ c
+			Just c -> pure . T.won . toPlayer $ c
 			Nothing -> findEmpties board <&> \case
-				[] -> T.Finished T.drawn
+				[] -> T.drawn
 				empties -> T.Next . HS.fromList . map ((,) player) $ empties
 					where player = if even (length empties) then X else O
 		)
@@ -40,7 +40,7 @@ main :: IO ()
 main = do
 	board <- newArray ((0,0), (2,2)) E
 	params <- ticTacToeParameters
-	let loop nMax 0 t = display board t >> T.descend params T.visitCount board t >>= \case
+	let loop nMax 0 t = display board t >> T.descend params board t >>= \case
 	    	Nothing -> pure ()
 	    	Just (move, t') -> print move >> putStrLn "press ENTER to continue" >> getLine >> loop nMax nMax t'
 	    loop nMax n t = T.mcts params board t >>= loop nMax (n-1)

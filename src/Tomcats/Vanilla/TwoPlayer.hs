@@ -1,7 +1,7 @@
 module Tomcats.Vanilla.TwoPlayer (
 	-- * Top level
 	parameters, parametersIO,
-	T.mcts, T.initialize, T.descend, T.Tree(..),
+	T.mcts, T.initialize, descend, T.Tree(..),
 	-- * Statistics and moves
 	Moves(..),
 	Statistics(..),
@@ -9,6 +9,7 @@ module Tomcats.Vanilla.TwoPlayer (
 	meanValuation,
 	-- * Other
 	Player(..), otherPlayer,
+	wonValuation, lostValuation, drawnValuation,
 	ucb1,
 	T.Parameters(..),
 	) where
@@ -18,7 +19,9 @@ import Data.HashMap.Strict (HashMap)
 import Data.HashSet (HashSet, toMap)
 import System.Random.Stateful
 import System.Random.MWC (createSystemRandom)
+
 import qualified Tomcats as T
+import Tomcats.TwoPlayer
 
 parameters :: (Hashable move, StatefulGen g m) =>
 	-- | 'T.clone'
@@ -30,8 +33,7 @@ parameters :: (Hashable move, StatefulGen g m) =>
 	-- | Tell which player made a move (so we know whether to strive for low
 	-- valuations or high valuations).
 	(move -> Player) ->
-	-- | 'T.play'; implementers may assume that the position given is one that
-	-- produced 'Finished' via the previous argument.
+	-- | 'T.play'
 	(position -> move -> m ()) ->
 	g -> T.Parameters m Double Statistics move position
 parameters clone moves player play g = T.rollout (T.uniform g) T.Parameters
@@ -52,33 +54,17 @@ parametersIO :: Hashable move =>
 	IO (T.Parameters IO Double Statistics move position)
 parametersIO clone moves player play = parameters clone moves player play <$> createSystemRandom
 
--- | An explicit representation of the collection of players. The 'O' player
--- should like valuations of @0@, and the 'I' player should like valuations of
--- @1@. (Cute, right?)
-data Player = O | I deriving (Eq, Ord, Read, Show, Bounded, Enum)
-
-otherPlayer :: Player -> Player
-otherPlayer O = I
-otherPlayer I = O
+-- | Choose the move that has the most visits, and mutate the current position
+-- accordingly. This returns 'Nothing' when the position is at a leaf node.
+descend ::
+	T.Parameters m score Statistics move position ->
+	position -> T.Tree Statistics move ->
+	m (Maybe (move, T.Tree Statistics move))
+descend params = T.descend params visitCount
 
 data Statistics = Statistics
 	{ visitCount, cumulativeValuation :: {-# UNPACK #-} !Double
 	} deriving (Eq, Ord, Read, Show)
-
--- | @won p@ is a suitable statistic for a game that's finished and won by @p@.
-won :: Player -> Statistics
-won p = Statistics 1 $ case p of
-	O -> 0
-	I -> 1
-
--- | @lost p@ is a suitable statistic for a game that's finished and lost by
--- @p@. This is equivalent to combining 'won' and 'otherPlayer'.
-lost :: Player -> Statistics
-lost = won . otherPlayer
-
--- | A suitable statistic for a game that's finished and neither player won.
-drawn :: Statistics
-drawn = Statistics 1 0.5
 
 meanValuation :: Statistics -> Double
 meanValuation stats = cumulativeValuation stats / visitCount stats
@@ -89,15 +75,33 @@ instance Semigroup Statistics where
 instance Monoid Statistics where mempty = Statistics 0 0
 
 -- | Suitable for use as a 'T.score'; compose with a function of type @move ->
--- Player@. This is not needed if you plan to simply use the default behaviors
--- provided by 'parameters' or 'parametersIO'.
+-- Player@. This is already called on your behalf if you use the default
+-- behaviors provided by 'parameters' or 'parametersIO'.
 ucb1 :: Player -> Statistics -> Statistics -> Double
 ucb1 p parent child = T.ucb1 (visitCount parent) (visitCount child) $ case p of
 	O -> visitCount child - cumulativeValuation child
 	I -> cumulativeValuation child
 
-data Moves move = Finished Statistics | Next (HashSet move) deriving (Eq, Ord, Read, Show)
+data Moves move
+	= Finished Double
+	-- ^ The game is over, and this is the valuation.
+	| Next (HashSet move)
+	-- ^ The game is afoot!
+	deriving (Eq, Ord, Read, Show)
+
+-- | @won p@ is a suitable summary of a game that's finished and won by @p@.
+won :: Player -> Moves move
+won = Finished . wonValuation
+
+-- | @lost p@ is a suitable summary of a game that's finished and lost by @p@.
+-- This is equivalent to combining 'won' and 'otherPlayer'.
+lost :: Player -> Moves move
+lost = Finished . lostValuation
+
+-- | A suitable summary of a game that's finished where neither player won.
+drawn :: Moves move
+drawn = Finished drawnValuation
 
 fromMoves :: Hashable move => Moves move -> (Statistics, HashMap move Statistics)
-fromMoves (Finished stats) = (stats, mempty)
+fromMoves (Finished valuation) = (Statistics 1 valuation, mempty)
 fromMoves (Next ms) = (mempty, mempty <$ toMap ms)

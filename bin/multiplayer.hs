@@ -35,12 +35,12 @@ ticTacToeParameters = T.parametersIO
 		clone
 		-- what next moves are available, or who won if the game is over
 		(\st -> winner st >>= \case
-			Just c -> pure . T.Finished . T.won $ c
+			Just c -> pure . T.won $ c
 			Nothing -> do
 				player <- readIORef (turn st) <&> (`mod` playerCount st)
 				es <- findEmpties st
 				pure $ case es of
-					[] -> T.Finished T.drawn
+					[] -> T.drawn
 					_ -> T.Next . HS.fromList . map ((,) player) $ es
 		)
 		-- translate between tic-tac-toe moves and tomcats players
@@ -57,7 +57,7 @@ main = do
 	pc <- getArgs >>= parseArgs
 	st <- newGameState pc
 	params <- ticTacToeParameters
-	let loop 0 t = display st t >> T.descend params T.visitCount st t >>= \case
+	let loop 0 t = display st t >> T.descend params st t >>= \case
 	    	Nothing -> pure ()
 	    	Just (move, t') -> print move >> putStrLn "press ENTER to continue" >> getLine >> loop nMax t'
 	    loop n t = T.mcts params st t >>= loop (n-1)

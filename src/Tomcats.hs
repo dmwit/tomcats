@@ -11,8 +11,10 @@ module Tomcats (
 	Tree(..),
 	initialize, unsafeInitialize,
 	descend, unsafeDescend,
+	-- * Scoring functions
+	ucb1, pucb, pucbA0,
 	-- * Utilities
-	ucb1, uniform,
+	uniform,
 	) where
 
 import Control.Monad
@@ -37,6 +39,11 @@ data Tree stats move = Tree
 	-- public production)
 	} deriving (Eq, Ord, Read, Show)
 
+-- | The things you need to tell 'mcts' for it to do its work.
+--
+-- When using the given 'Semigroup' instance, the first argument will always be
+-- from higher in the tree (i.e. closer to the root) and the second will always
+-- be from lower in the tree.
 data Parameters m score stats move position where
 	Parameters :: (Monad m, Ord score, Semigroup stats, Hashable move) =>
 		{ score :: move -> stats -> stats -> score
@@ -51,6 +58,10 @@ data Parameters m score stats move position where
 		-- position). The stats returned in the first part should be correct if
 		-- this is a leaf node, but may be an estimate (e.g. as computed by a
 		-- neural net or doing a rollout) if not.
+		--
+		-- When creating a new node in the tree, the stats from the parent's
+		-- 'HashMap' and the stats from the first part of this call on the
+		-- child position will be combined with the 'Semigroup' instance.
 		--
 		-- Implementers may mutate the given position.
 		, clone :: position -> m position
@@ -185,11 +196,11 @@ mcts_ params@Parameters{} pos = go where
 			( maximumOn (\m t'    -> score params m (statistics t) (statistics t')) (children t)
 			, maximumOn (\m stats -> score params m (statistics t) stats          ) (unexplored t)
 			) of
-			(Just (m1, t1, score1), Just (m2, _stats2, score2))
-				| score1 < score2 -> explore t m2
+			(Just (m1, t1, score1), Just (m2, stats2, score2))
+				| score1 < score2 -> explore t m2 stats2
 				| otherwise -> recurse t m1 t1
 			(Just (m1, t1, _score1), _) -> recurse t m1 t1
-			(_, Just (m2, _stats2, _score2)) -> explore t m2
+			(_, Just (m2, stats2, _score2)) -> explore t m2 stats2
 			_ -> case cachedEvaluation t of
 				Just eval -> pure (eval, t)
 				-- should never happen, I guess unless the preprocessor screwed up
@@ -197,11 +208,20 @@ mcts_ params@Parameters{} pos = go where
 					\(eval, _) -> (eval, t { cachedEvaluation = Just eval })
 		pure (dstats <> childStats, t' { statistics = statistics t <> childStats })
 
-	explore t m = do
+	-- mStats is included in the child, but not propagated up the tree. Users
+	-- that want it propagated can simply include it in their implementation of
+	-- expand.
+	--
+	-- Doing it this way lets expand produce different parts of the statistics
+	-- for nodes and edges without having these interfere with each other. See
+	-- e.g. the AlphaZero module's distinction between prior probabilities (set
+	-- just once on edges at expansion time) and valuation (accumulated as
+	-- usual when visiting new nodes).
+	explore t m mStats = do
 		play params pos m
 		child <- unsafeInitialize params pos
 		pure (statistics child, t
-			{ children = HM.insert m child (children t)
+			{ children = HM.insert m child { statistics = mStats <> statistics child } (children t)
 			, unexplored = HM.delete m (unexplored t)
 			})
 
@@ -210,7 +230,7 @@ mcts_ params@Parameters{} pos = go where
 		(stats, child') <- go child
 		pure (stats, t { children = HM.insert m child' (children t) })
 
--- | Compute the popular upper-confidence bound score.
+-- | Compute the popular upper confidence bound score.
 --
 -- Arguments are a visit count for the parent node (n in the literature), a
 -- visit count for the current node (n_i in the literature), and a cumulative
@@ -220,6 +240,33 @@ mcts_ params@Parameters{} pos = go where
 ucb1 :: Double -> Double -> Double -> Double
 ucb1 _ 0 _ = 1/0
 ucb1 n n_i q_i = q_i/n_i + sqrt (2 * log n / n_i)
+
+-- | Compute the predictor-biased upper confidence bound score from Multi-armed
+-- Bandits with Episode Context.
+--
+-- The first argument is a prior probability for the current node; the
+-- remainder are as in 'ucb1'.
+pucb :: Double -> Double -> Double -> Double -> Double
+pucb p _ 0 _ = 1 - 2 / p
+pucb p n n_i q_i = x_i + c n n_i - m n p where
+	x_i = q_i / n_i
+	c t s = sqrt (3 * log t / 2 * s)
+	m t i | t > 1 = 2 / i * sqrt (log t / t)
+	      | otherwise = 2 / i
+
+-- | Compute the AlphaZero variant of the predictor-biased upper confidence
+-- bound score.
+--
+-- The first argument is a parameter that controls exploration, called c_{puct}
+-- in Mastering the Game of Go Without Human Knowledge; larger values bias the
+-- search more and more towards prior probabilities. Setting it to something
+-- negative probably isn't sensible; it would cause the search to actively
+-- avoid moves with high prior probabilities.
+--
+-- The remaining arguments are as in 'pucb'.
+pucbA0 :: Double -> Double -> Double -> Double -> Double -> Double
+pucbA0 c_puct p n 0 _ = c_puct * p * sqrt n
+pucbA0 c_puct p n n_i q_i = q_i/n_i + c_puct * p * sqrt n / (1 + n_i)
 
 -- | Choose uniformly at random from among a collection of moves. Note that the
 -- @position@ and @stats@ type variables are completely unconstrained. Though
