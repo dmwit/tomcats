@@ -79,10 +79,12 @@ parametersIO :: Hashable move =>
 	(position -> move -> IO ()) ->
 	IO (RNG, T.Parameters IO Double Statistics move position)
 parametersIO numMoves alpha c_puct clone moves player play =
+	-- if you change createSystemRandom here, double-check that the haddocks on
+	-- RNG are still correct
 	liftM2 (,) RNG (parameters numMoves alpha c_puct clone moves player play) <$> createSystemRandom
 
 -- | An RNG, but which kind it is is abstracted away so I can change it later
--- without you knowing.
+-- without you knowing. (It's mwc-random right now.)
 data RNG where RNG :: StatefulGen g IO => g -> RNG
 
 instance StatefulGen RNG IO where
