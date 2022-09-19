@@ -14,6 +14,7 @@ module Tomcats.AlphaZero (
 	Statistics(..),
 	won, lost, drawn,
 	meanValuation,
+	normalizeStatistics,
 	-- * Other
 	Player(..), otherPlayer,
 	wonValuation, lostValuation, drawnValuation,
@@ -27,6 +28,7 @@ import Control.Monad.Trans.State
 import Data.Functor
 import Data.Hashable
 import Data.HashMap.Strict (HashMap)
+import Data.Monoid
 import System.Random.MWC
 import System.Random.Stateful
 import qualified Data.HashMap.Strict as HM
@@ -246,6 +248,13 @@ fromMovesDeterministic ms = (,) (Statistics 1 0 (valuation ms))
 -- distribution by dividing out the sum of the weights.
 normalize :: HashMap a Double -> HashMap a Double
 normalize m = m <&> (/sum m)
+
+-- | Like 'normalize', turn a collection of non-negative prior weights to a
+-- probability distribution; but operates on the 'priorProbability' field of
+-- 'Statistics'.
+normalizeStatistics :: HashMap a Statistics -> HashMap a Statistics
+normalizeStatistics m = m <&> \stats -> stats { priorProbability = priorProbability stats / total } where
+	Sum total = foldMap (Sum . priorProbability) m
 
 -- | Given a parameter for a Dirichlet distribution, take a sample and combine
 -- the results with each of the elements in the map. This is already called on
