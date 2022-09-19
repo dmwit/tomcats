@@ -14,7 +14,7 @@ module Tomcats (
 	-- * Scoring functions
 	ucb1, pucb, pucbA0,
 	-- * Utilities
-	uniform,
+	uniform, maximumOn,
 	) where
 
 import Control.Monad
