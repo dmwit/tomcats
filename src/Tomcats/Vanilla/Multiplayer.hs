@@ -14,6 +14,7 @@ module Tomcats.Vanilla.Multiplayer (
 	) where
 
 import Control.Applicative
+import Data.Aeson
 import Data.Functor
 import Data.Hashable
 import Data.HashMap.Strict (HashMap)
@@ -68,6 +69,9 @@ data Statistics player = Statistics
 	{ visitCount :: {-# UNPACK #-} !Double
 	, cumulativeValuations :: TMap player Double
 	} deriving Show
+
+instance ToJSONKey player => ToJSON (Statistics player) where toJSON (Statistics vc cv) = toJSON (vc, cv)
+instance (FromJSONKey player, Hashable player) => FromJSON (Statistics player) where parseJSON v = uncurry Statistics <$> parseJSON v
 
 -- | @won p@ is a suitable valuation for a game that's finished and won by @p@.
 wonValuation :: Hashable player => player -> TMap player Double

@@ -25,6 +25,7 @@ module Tomcats.AlphaZero (
 
 import Control.Monad
 import Control.Monad.Trans.State
+import Data.Aeson
 import Data.Functor
 import Data.Hashable
 import Data.HashMap.Strict (HashMap)
@@ -183,6 +184,9 @@ instance Semigroup Statistics where
 		}
 
 instance Monoid Statistics where mempty = Statistics 0 0 0
+
+instance ToJSON Statistics where toJSON stats = toJSON (visitCount stats, priorProbability stats, cumulativeValuation stats)
+instance FromJSON Statistics where parseJSON v = parseJSON v <&> \(vc, pp, cv) -> Statistics vc pp cv
 
 meanValuation :: Statistics -> Double
 meanValuation stats = cumulativeValuation stats / visitCount stats

@@ -14,6 +14,7 @@ module Tomcats.Vanilla.TwoPlayer (
 	T.Parameters(..),
 	) where
 
+import Data.Aeson
 import Data.Hashable
 import Data.HashMap.Strict (HashMap)
 import Data.HashSet (HashSet, toMap)
@@ -73,6 +74,9 @@ instance Semigroup Statistics where
 	Statistics c v <> Statistics c' v' = Statistics (c+c') (v+v')
 
 instance Monoid Statistics where mempty = Statistics 0 0
+
+instance ToJSON Statistics where toJSON (Statistics vc cv) = toJSON (vc, cv)
+instance FromJSON Statistics where parseJSON v = uncurry Statistics <$> parseJSON v
 
 -- | Suitable for use as a 'T.score'; compose with a function of type @move ->
 -- Player@. This is already called on your behalf if you use the default

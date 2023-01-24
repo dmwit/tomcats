@@ -1,4 +1,6 @@
+{-# Language DeriveAnyClass #-}
 {-# Language DeriveFunctor #-}
+{-# Language DeriveGeneric #-}
 {-# Language DerivingVia #-}
 
 module Data.HashMap.Total (
@@ -15,10 +17,12 @@ import Prelude hiding (const, ($))
 import qualified Prelude as P
 
 import Control.Applicative hiding (empty)
+import Data.Aeson
 import Data.Hashable
 import Data.HashMap.Strict (HashMap)
 import Data.HashSet (HashSet)
 import Data.Monoid
+import GHC.Generics
 
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
@@ -29,7 +33,7 @@ import qualified Data.HashSet as HS
 -- for debugging, as it reveals implementation details that users are not
 -- supposed to be able to know.
 data TMap a b = TMap b (HashMap a b)
-	deriving (Functor, Show)
+	deriving (FromJSON, Functor, Generic, Show)
 	deriving (Semigroup, Monoid, Num) via Ap (TMap a) b
 
 instance Hashable a => Applicative (TMap a) where
@@ -38,6 +42,9 @@ instance Hashable a => Applicative (TMap a) where
 		(defF defX)
 		(HM.keysSet mF <> HM.keysSet mX)
 		(\a -> (f $ a) (x $ a))
+
+instance (ToJSONKey a, ToJSON b) => ToJSON (TMap a b) where
+	toEncoding = genericToEncoding defaultOptions
 
 tmapJoin :: Hashable a => TMap a (TMap a b) -> TMap a b
 tmapJoin (TMap defT@(TMap defB mB) mT) = TMap defB (HM.mapWithKey (flip ($)) mT `HM.union` mB)
