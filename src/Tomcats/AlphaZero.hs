@@ -189,7 +189,7 @@ instance ToJSON Statistics where toJSON stats = toJSON (visitCount stats, priorP
 instance FromJSON Statistics where parseJSON v = parseJSON v <&> \(vc, pp, cv) -> Statistics vc pp cv
 
 meanValuation :: Statistics -> Double
-meanValuation stats = cumulativeValuation stats / visitCount stats
+meanValuation stats = cumulativeValuation stats / unzero (visitCount stats)
 
 -- | Suitable for use as a 'T.score'; compose with a function of type @move ->
 -- Player@. This is already called on your behalf if you use the default
@@ -249,16 +249,20 @@ fromMovesDeterministic ms = (,) (Statistics 1 0 (valuation ms))
 	  else (\pp -> mempty { priorProbability = pp }) <$> moveDistribution ms
 
 -- | Given a collection of non-negative weights, produce a probability
--- distribution by dividing out the sum of the weights.
+-- distribution by dividing out the sum of the weights. Leaves the map
+-- unchanged if the weights sum to 0.
 normalize :: HashMap a Double -> HashMap a Double
-normalize m = m <&> (/sum m)
+normalize m = m <&> (/unzero (sum m))
 
 -- | Like 'normalize', turn a collection of non-negative prior weights to a
 -- probability distribution; but operates on the 'priorProbability' field of
 -- 'Statistics'.
 normalizeStatistics :: HashMap a Statistics -> HashMap a Statistics
-normalizeStatistics m = m <&> \stats -> stats { priorProbability = priorProbability stats / total } where
+normalizeStatistics m = m <&> \stats -> stats { priorProbability = priorProbability stats / unzero total } where
 	Sum total = foldMap (Sum . priorProbability) m
+
+unzero :: Double -> Double
+unzero = \case 0 -> 1; v -> v
 
 -- | Given a parameter for a Dirichlet distribution, take a sample and combine
 -- the results with each of the elements in the map. This is already called on
@@ -278,7 +282,7 @@ dirichlet param f g m = do
 -- the existing distribution, and @0@ means to use the existing distribution
 -- and throw away the new sample.
 dirichletA0 :: StatefulGen g m => Double -> Double -> g -> HashMap move Double -> m (HashMap move Statistics)
-dirichletA0 numMoves alpha = dirichlet (10/numMoves) $ \noise pp -> mempty { priorProbability = lerp alpha noise pp }
+dirichletA0 numMoves alpha = dirichlet (10/unzero numMoves) $ \noise pp -> mempty { priorProbability = lerp alpha noise pp }
 
 lerp :: Double -> Double -> Double -> Double
 lerp alpha x y = alpha*x + (1-alpha)*y
