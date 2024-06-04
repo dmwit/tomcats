@@ -35,7 +35,9 @@ library
     hs-source-dirs:   src
     exposed-modules:  Data.HashMap.Total,
                       Tomcats,
-                      Tomcats.AlphaZero,
+                      Tomcats.AlphaZero.Double,
+                      Tomcats.AlphaZero.Float,
+                      Tomcats.AlphaZero.Shared,
                       Tomcats.Vanilla.Multiplayer,
                       Tomcats.Vanilla.TwoPlayer
 

@@ -1,9 +1,6 @@
-{-# Language FlexibleContexts #-}
-{-# Language GADTs #-}
 {-# Language LambdaCase #-}
-{-# Language MultiParamTypeClasses #-}
 
-module Tomcats.AlphaZero (
+module Tomcats.AlphaZero.Double (
 	-- * Top level
 	parameters, parametersIO, parametersDeterministic,
 	T.mcts, T.initialize, descend, descendDeterministic, T.Tree(..),
@@ -18,7 +15,7 @@ module Tomcats.AlphaZero (
 	-- * Other
 	Player(..), otherPlayer,
 	wonValuation, lostValuation, drawnValuation,
-	pucbA0, dirichlet, dirichletA0,
+	pucbA0, pucbA0Raw, dirichlet, dirichletA0,
 	RNG(..),
 	T.Parameters(..),
 	) where
@@ -30,13 +27,12 @@ import Data.Functor
 import Data.Hashable
 import Data.HashMap.Strict (HashMap)
 import Data.Monoid
-import System.Random.MWC
-import System.Random.Stateful
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Vector as V
 import qualified System.Random.MWC.Distributions as Dist
 
 import qualified Tomcats as T
+import Tomcats.AlphaZero.Shared
 import Tomcats.TwoPlayer
 
 parameters :: (Hashable move, StatefulGen g m) =>
@@ -85,19 +81,6 @@ parametersIO numMoves alpha c_puct clone moves player play =
 	-- if you change createSystemRandom here, double-check that the haddocks on
 	-- RNG are still correct
 	liftM2 (,) RNG (parameters numMoves alpha c_puct clone moves player play) <$> createSystemRandom
-
--- | An RNG, but which kind it is is abstracted away so I can change it later
--- without you knowing. (It's mwc-random right now.)
-data RNG where RNG :: StatefulGen g IO => g -> RNG
-
-instance StatefulGen RNG IO where
-	uniformWord32R r (RNG g) = uniformWord32R r g
-	uniformWord64R r (RNG g) = uniformWord64R r g
-	uniformWord8 (RNG g) = uniformWord8 g
-	uniformWord16 (RNG g) = uniformWord16 g
-	uniformWord32 (RNG g) = uniformWord32 g
-	uniformWord64 (RNG g) = uniformWord64 g
-	uniformShortByteString n (RNG g) = uniformShortByteString n g
 
 -- | See also 'parameters', which accepts the same arguments and a few extras.
 -- Generally, you should use 'parameters' or 'parametersIO' during training and
@@ -202,7 +185,7 @@ meanValuation stats = cumulativeValuation stats / unzero (visitCount stats)
 -- negative probably isn't sensible; it would cause the search to actively
 -- avoid moves with high prior probabilities.
 pucbA0 :: Double -> Player -> Statistics -> Statistics -> Double
-pucbA0 c_puct p parent child = T.pucbA0 c_puct (priorProbability child) (visitCount parent) (visitCount child) $ case p of
+pucbA0 c_puct p parent child = pucbA0Raw c_puct (priorProbability child) (visitCount parent) (visitCount child) $ case p of
 	O -> visitCount child - cumulativeValuation child
 	I -> cumulativeValuation child
 
@@ -260,6 +243,20 @@ normalize m = m <&> (/unzero (sum m))
 normalizeStatistics :: HashMap a Statistics -> HashMap a Statistics
 normalizeStatistics m = m <&> \stats -> stats { priorProbability = priorProbability stats / unzero total } where
 	Sum total = foldMap (Sum . priorProbability) m
+
+-- | Compute the AlphaZero variant of the predictor-biased upper confidence
+-- bound score.
+--
+-- The first argument is a parameter that controls exploration, called c_{puct}
+-- in Mastering the Game of Go Without Human Knowledge; larger values bias the
+-- search more and more towards prior probabilities. Setting it to something
+-- negative probably isn't sensible; it would cause the search to actively
+-- avoid moves with high prior probabilities.
+--
+-- The remaining arguments are as in 'T.pucb'.
+pucbA0Raw :: Double -> Double -> Double -> Double -> Double -> Double
+pucbA0Raw c_puct p n 0 _ = c_puct * p * sqrt n
+pucbA0Raw c_puct p n n_i q_i = q_i/n_i + c_puct * p * sqrt n / (1 + n_i)
 
 unzero :: Double -> Double
 unzero = \case 0 -> 1; v -> v

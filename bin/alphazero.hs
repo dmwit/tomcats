@@ -12,7 +12,7 @@ import Data.HashMap.Strict (HashMap)
 import Data.Traversable
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
-import qualified Tomcats.AlphaZero as T
+import qualified Tomcats.AlphaZero.Double as T
 
 data Cell = E | X | O deriving (Eq, Ord, Read, Show, Bounded, Enum)
 

@@ -12,7 +12,7 @@ module Tomcats (
 	initialize, unsafeInitialize,
 	descend, unsafeDescend,
 	-- * Scoring functions
-	ucb1, pucb, pucbA0,
+	ucb1, pucb,
 	-- * Utilities
 	uniform, maximumOn,
 	) where
@@ -253,20 +253,6 @@ pucb p n n_i q_i = x_i + c n n_i - m n p where
 	c t s = sqrt (3 * log t / 2 * s)
 	m t i | t > 1 = 2 / i * sqrt (log t / t)
 	      | otherwise = 2 / i
-
--- | Compute the AlphaZero variant of the predictor-biased upper confidence
--- bound score.
---
--- The first argument is a parameter that controls exploration, called c_{puct}
--- in Mastering the Game of Go Without Human Knowledge; larger values bias the
--- search more and more towards prior probabilities. Setting it to something
--- negative probably isn't sensible; it would cause the search to actively
--- avoid moves with high prior probabilities.
---
--- The remaining arguments are as in 'pucb'.
-pucbA0 :: Double -> Double -> Double -> Double -> Double -> Double
-pucbA0 c_puct p n 0 _ = c_puct * p * sqrt n
-pucbA0 c_puct p n n_i q_i = q_i/n_i + c_puct * p * sqrt n / (1 + n_i)
 
 -- | Choose uniformly at random from among a collection of moves. Note that the
 -- @position@ and @stats@ type variables are completely unconstrained. Though
