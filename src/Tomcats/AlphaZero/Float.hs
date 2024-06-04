@@ -18,6 +18,7 @@ module Tomcats.AlphaZero.Float (
 	pucbA0, pucbA0Raw, dirichlet, dirichletA0,
 	RNG(..),
 	T.Parameters(..),
+	unzero, lerp,
 	) where
 
 import Control.Monad
@@ -258,6 +259,7 @@ pucbA0Raw :: Float -> Float -> Float -> Float -> Float -> Float
 pucbA0Raw c_puct p n 0 _ = c_puct * p * sqrt n
 pucbA0Raw c_puct p n n_i q_i = q_i/n_i + c_puct * p * sqrt n / (1 + n_i)
 
+-- | @\case 0 -> 1; v -> v@
 unzero :: Float -> Float
 unzero = \case 0 -> 1; v -> v
 
@@ -281,5 +283,6 @@ dirichlet param f g m = do
 dirichletA0 :: StatefulGen g m => Float -> Float -> g -> HashMap move Float -> m (HashMap move Statistics)
 dirichletA0 numMoves alpha = dirichlet (10/unzero numMoves) $ \noise pp -> mempty { priorProbability = lerp alpha noise pp }
 
+-- | @lerp alpha x y@ linearly interpolates between @x@ (when @alpha@ is @1@) and @y@ (when @alpha@ is @0@).
 lerp :: Float -> Float -> Float -> Float
 lerp alpha x y = alpha*x + (1-alpha)*y
